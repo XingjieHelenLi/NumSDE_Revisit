@@ -1,0 +1,208 @@
+% ========================================================================
+% STATIONARY DENSITY COMPUTATION FOR SDE WITH REFLECTING BOUNDARIES
+% ========================================================================
+
+
+
+%% Main computation function
+
+function [x, rho, mean_x, second_moment, var_x, gx] = ...
+    stationary_density_reflecting(L, E, D, A, B, x_star, C, x_star2,varargin)
+    % Compute stationary density rho(x) for the Ito SDE with reflecting 
+    % boundaries on [-L/2, L/2].
+    %
+    % Uses the zero-flux closed form:
+    %     rho(x) ∝ (1/g(x)^2) * exp( ∫^x 2 f(y) / g(y)^2 dy )
+    % Normalization is done by trapezoidal rule.
+    %
+    % Parameters:
+    %   L       : Domain length
+    %   E, D    : Drift parameters
+    %   A, B, x_star, C : Diffusion parameters
+    %
+    % Optional name-value pairs:
+    %   'n'         : Number of grid points (default: 20001)
+    %   'min_g_abs' : Minimum |g| threshold (default: 1e-12)
+    %
+    % Returns:
+    %   x           : Grid
+    %   rho         : Stationary density on grid, normalized
+    %   mean_x      : E[X]
+    %   second_moment : E[X^2]
+    %   var_x       : Var[X]
+    %   gx          : g(x) on grid (useful for diagnostics)
+    
+    % Parse optional arguments
+    p = inputParser;
+    addParameter(p, 'n', 20001, @isnumeric);
+    addParameter(p, 'min_g_abs', 1e-12, @isnumeric);
+    parse(p, varargin{:});
+    
+    n = p.Results.n;
+    min_g_abs = p.Results.min_g_abs;
+    
+    % Grid
+    x = linspace(-L / 2.0, L / 2.0, n);
+    dx = x(2) - x(1);
+    
+    fx = f(x, E, D,x_star2);
+    gx = g(x, A, B, x_star, C);
+    
+    % Safety: if g is too close to 0, rho ~ 1/g^2 can blow up
+    if min(abs(gx)) < min_g_abs
+        error('g(x) gets too close to zero on the grid (min |g| = %.3e). Stationary density may be singular/unstable. Adjust parameters (often ensure C > |A|), refine grid, or lower min_g_abs carefully.', ...
+            min(abs(gx)));
+    end
+    
+    g2 = gx.^2;
+    integrand = 2.0 * fx ./ g2;  % 2 f / g^2
+    
+    % Cumulative integral Phi(x) = ∫_{x_left}^x integrand(y) dy
+    % Trapezoidal cumulative integration
+    Phi = zeros(size(x));
+    Phi(1) = 0.0;
+    Phi(2:end) = cumsum(0.5 * (integrand(2:end) + integrand(1:end-1)) * dx);
+    
+    % Unnormalized log-density: log rho = Phi - log(g^2) + const
+    log_rho = Phi - log(g2);
+    
+    % Stabilize exponentiation
+    log_rho = log_rho - max(log_rho);
+    rho_unnorm = exp(log_rho);
+    
+    % Normalize
+    Z = trapz(x, rho_unnorm);
+    rho = rho_unnorm / Z;
+    
+    % Moments
+    mean_x = trapz(x, x .* rho);
+    second_moment = trapz(x, (x.^2) .* rho);
+    var_x = second_moment - mean_x^2;
+end
+
+
+%% Model definition functions
+
+function y = f(x, E, D, x_star2)
+    % Drift: f(x) = E * erf((x - x_star2) / D)
+     y = E * erf((x - x_star2) / D);
+end
+
+function y = g(x, A, B, x_star, C)
+    % Diffusion amplitude: g(x) = A * erf((x - x_star) / B) + C
+    y = A * erf((x - x_star) / B) + C;
+end
+
+%% Flux computation function
+
+function J = stationary_flux(x, rho, E, D, A, B, x_star, C)
+    % Compute the stationary Fokker–Planck flux:
+    %     J = f rho - (1/2) d/dx (g^2 rho)
+    %
+    % For a correct zero-flux stationary density with reflecting BC,
+    % J should be ~ 0 across the domain (up to numerical error).
+    
+    fx = f(x, E, D);
+    gx = g(x, A, B, x_star, C);
+    g2rho = (gx.^2) .* rho;
+    
+    % Numerical derivative using gradient
+    dx = x(2) - x(1);
+    dg2rho_dx = gradient(g2rho, dx);
+    
+    J = fx .* rho - 0.5 * dg2rho_dx;
+end
+
+%% Plotting function
+
+function plot_stationary_density(x, rho, mean_x, var_x, filename)
+    % Plot the stationary density
+    %
+    % Parameters:
+    %   x        : Grid
+    %   rho      : Density
+    %   mean_x   : Mean (optional, can be [])
+    %   var_x    : Variance (optional, can be [])
+    %   filename : Save filename (optional, can be [])
+    
+    figure('Position', [100, 100, 800, 500]);
+    plot(x, rho, 'LineWidth', 2);
+    xlabel('x', 'FontSize', 12);
+    ylabel('Stationary density $\rho(x)$', 'Interpreter', 'latex', 'FontSize', 12);
+    
+    title_str = 'Stationary density (reflecting BC)';
+    if ~isempty(mean_x) && ~isempty(var_x)
+        title_str = sprintf('%s\nmean = %.6g, var = %.6g', title_str, mean_x, var_x);
+    end
+    title(title_str, 'FontSize', 13);
+    
+    grid on;
+    
+    if ~isempty(filename)
+        saveas(gcf, filename);
+        fprintf('Figure saved to %s\n', filename);
+    end
+end
+
+function plot_stationary_density_with_mean(x, rho, mean_x)
+    % Plot the stationary density with filled area and mean line
+    
+    figure('Position', [100, 100, 800, 400]);
+    
+    % Plot density
+    plot(x, rho, 'LineWidth', 2, 'DisplayName', '$\rho(x)$ (stationary)');
+    hold on;
+    
+    % Fill area
+    fill([x, fliplr(x)], [rho, zeros(size(rho))], 'b', 'FaceAlpha', 0.3, 'EdgeColor', 'none');
+    
+    % Plot mean line
+    plot([mean_x, mean_x], [0, max(rho)], '--', 'LineWidth', 1.5, 'DisplayName', 'Mean');
+    
+    xlabel('Position, x', 'FontSize', 12);
+    ylabel('PDF, $\rho(x)$', 'Interpreter', 'latex', 'FontSize', 12);
+    legend('Interpreter', 'latex', 'Location', 'best', 'FontSize', 11);
+    grid on;
+    set(gca, 'GridLineStyle', ':', 'GridAlpha', 0.5);
+    
+    hold off;
+end
+
+% %% Example usage (Main script)
+% 
+% % Clear workspace
+% clear; close all; clc;
+% 
+% % ---- Set your parameters here ----
+% L = 16.0;
+% E = -2.0;  % -1.5
+% D = 1.0;
+% A = 0.1;
+% B = 1.0;
+% x_star = 1.0;  % 0.5
+% C = 1.0;
+% 
+% % Compute stationary density
+% [x, rho, mean_x, second_moment, var_x, gx] = ...
+%     stationary_density_reflecting(L, E, D, A, B, x_star, C, 'n', 40001);
+% 
+% % Display results
+% fprintf('\n========================================\n');
+% fprintf('Results:\n');
+% fprintf('========================================\n');
+% fprintf('  E[X]      = %.10f\n', mean_x);
+% fprintf('  E[X^2]    = %.10f\n', second_moment);
+% fprintf('  Var[X]    = %.10f\n', var_x);
+% fprintf('  min g(x)  = %.10f\n', min(gx));
+% fprintf('  max g(x)  = %.10f\n', max(gx));
+% 
+% % Optional: check flux is near zero
+% J = stationary_flux(x, rho, E, D, A, B, x_star, C);
+% fprintf('  max |J(x)| = %.3e\n', max(abs(J)));
+% fprintf('========================================\n\n');
+% 
+% % Plot stationary density
+% plot_stationary_density(x, rho, mean_x, var_x, 'stationary_density.png');
+% 
+% % Plot with filled area and mean line
+% plot_stationary_density_with_mean(x, rho, mean_x);
