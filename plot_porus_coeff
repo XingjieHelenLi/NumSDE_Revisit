@@ -4,7 +4,7 @@ function plot_porus_coeff(L,A,B,C,D,E,x_star, x_star2)
 
 
 % Create x array
-L2 = 100; % domain for numerical integration
+L2 = L; % domain
 x = linspace(-L2/2, L2/2, 5001);
 
 % Define functions
