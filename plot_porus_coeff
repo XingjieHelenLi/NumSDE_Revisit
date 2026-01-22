@@ -1,0 +1,107 @@
+function plot_porus_coeff(L,A,B,C,D,E,x_star, x_star2) 
+
+% Parameters setting
+
+
+% Create x array
+L2 = 100; % domain for numerical integration
+x = linspace(-L2/2, L2/2, 5001);
+
+% Define functions
+f = @(x) E * erf((x-x_star2) / D);
+g = @(x) A * erf((x - x_star) / B) + C;
+
+% Compute function values
+f_vals = f(x);
+g_vals = g(x);
+
+% Compute derivatives
+df_dx = @(x) E / D * 2 / sqrt(pi) * exp(-((x-x_star2) / D).^2);
+dg_dx = @(x) A / B * 2 / sqrt(pi) * exp(-((x - x_star) / B).^2);
+
+% Tangent line at x = 0 for f(x)
+x0_f = x_star2;
+f0 = f(x0_f);
+slope_f = df_dx(x0_f);
+tangent_f = @(x) f0 + slope_f * (x - x0_f);
+
+% Tangent line at x = 0 for g(x)
+x0_g = x_star;
+g0 = g(x0_g);
+slope_g = dg_dx(x0_g);
+tangent_g = @(x) g0 + slope_g * (x - x0_g);
+
+fprintf('  Approx eta   = %.10f\n', slope_g/sqrt(abs(slope_f)));
+
+% Create figure with subplots
+figure('Position', [100, 100, 1200, 500]);
+
+% Subplot 1: f(x)
+subplot(1, 2, 1);
+plot(x, f_vals, 'b-', 'LineWidth', 2.5, 'DisplayName', '$f(x)$');
+hold on;
+
+% Tangent line
+x_tangent = linspace(-1*L/5, 1*L/5, 501);
+
+plot(x_tangent, tangent_f(x_tangent), 'b--', 'LineWidth', 1.5, ...
+    'DisplayName', sprintf('$f''(x^*) = %.4f$', slope_f));
+hold on
+% Mark tangent point
+plot(x_star2, f0, 'bo', 'MarkerSize', 10, 'MarkerFaceColor', 'b', 'HandleVisibility', 'off');
+hold on
+
+% Vertical lines
+y_limits_f = [min(f_vals)-0.01, max(f_vals)+0.2];
+
+plot([-L/4, -L/4], y_limits_f, 'k--', 'LineWidth', 1.5,'HandleVisibility', 'off');
+hold on;
+plot([L/4, L/4], y_limits_f, 'k--', 'LineWidth', 1.5,'HandleVisibility', 'off');
+hold on
+xlabel('$x$', 'Interpreter', 'latex', 'FontSize', 14);
+ylabel('$f(x)$', 'Interpreter', 'latex', 'FontSize', 14);
+
+legend('Interpreter', 'latex', 'Location', 'best', 'FontSize', 14);
+grid on;
+set(gca, 'FontSize', 14);
+ylim(y_limits_f);
+xlim([-L/2, L/2])
+
+
+% Subplot 2: g(x)
+subplot(1, 2, 1);
+plot(x, g_vals, 'r-', 'LineWidth', 2.5, 'DisplayName', '$g(x)$');
+hold on;
+
+
+% Tangent line
+x_tangent2 = linspace(-2.5*L/5, 2.5*L/5, 501);
+plot(x_tangent2, tangent_g(x_tangent2), 'r--', 'LineWidth', 1.5, ...
+      'DisplayName', sprintf('$g''(x^*) = %.4f$', slope_g));
+hold on
+% Mark tangent point
+plot(x_star, g0, 'ro', 'MarkerSize', 10, 'MarkerFaceColor', 'r', 'HandleVisibility', 'off');
+hold on
+
+% Vertical lines
+y_limits_g = [min(g_vals)-0.05, max(g_vals)+0.01];
+
+hold on
+
+hold on
+xlabel('$x$', 'Interpreter', 'latex', 'FontSize', 14);
+ylabel('$g(x)$', 'Interpreter', 'latex', 'FontSize', 14);
+%title('Diffusion: $g(x)$', 'Interpreter', 'latex', 'FontSize', 14);
+legend('Interpreter', 'latex', 'Location', 'best', 'FontSize', 14);
+grid on;
+set(gca, 'FontSize', 14);
+%ylim(y_limits_g);
+ylim([min(f_vals)-0.01, max(g_vals)+0.05])
+xlim([-L/2, L/2])
+hold off;
+
+% Overall title
+%sgtitle('Functions with Tangent Lines and Vertical Markers', 'FontSize', 18, 'FontWeight', 'bold');
+
+
+
